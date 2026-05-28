@@ -1,0 +1,100 @@
+import pandas as pd
+import numpy as np
+import pywt
+import matplotlib.pyplot as plt
+from scipy.signal import medfilt
+
+def nonlinear_filtering(data, kernel_size=1):
+    return medfilt(data, kernel_size=kernel_size)
+
+def wavelet_denoise(signal, wavelet='db4', level=1):
+    coeffs = pywt.wavedec(signal, wavelet, mode="per")
+    sigma = np.median(np.abs(coeffs[-level])) / 0.6745
+    threshold = sigma * np.sqrt(2 * np.log(len(signal)))
+    coeffs_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs]
+    return pywt.waverec(coeffs_thresholded, wavelet, mode="per")
+
+# FILE GOES HERE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# CHANGE FILE NAME PLEASE
+file_path = "Patient4-Calibration-Baseline-Kendall-5_28_26.csv"
+df = pd.read_csv(file_path)
+
+# ── Count and handle missing values ──────────────────────────────
+for col in ["KL", "KR"]:
+    total = len(df[col])
+    missing = df[col].isna().sum()
+    print(f"Total values in {col}: {total}, Missing: {missing}")
+
+for col in ["KL", "KR"]:
+    if df[col].isna().sum() > 0:
+        df[col].interpolate(method="linear", inplace=True)
+
+# ── Apply nonlinear filtering ─────────────────────────────────────
+df["KL_filtered"] = nonlinear_filtering(df["KL"], kernel_size=1)
+df["KR_filtered"] = nonlinear_filtering(df["KR"], kernel_size=1)
+
+# ── Apply wavelet denoising ───────────────────────────────────────
+df["KL_denoised"] = wavelet_denoise(df["KL_filtered"])
+df["KR_denoised"] = wavelet_denoise(df["KR_filtered"])
+
+# ── Compute shared y-axis range ───────────────────────────────────
+all_signals = pd.concat([
+    df["KL"], df["KR"],
+    df["KL_denoised"], df["KR_denoised"]
+])
+
+tick_step = 50
+global_min = np.floor(all_signals.min() / tick_step) * tick_step
+global_max = np.ceil(all_signals.max() / tick_step) * tick_step
+y_ticks = np.arange(global_min, global_max + tick_step, tick_step)
+
+print(f"Y-axis range: {global_min} to {global_max} µV (ticks every {tick_step} µV)")
+
+# ── Plot Kendall Calibration ──────────────────────────────────────
+plt.figure(figsize=(12, 8))
+plt.suptitle("Kendall Calibration Baseline", fontsize=14, fontweight='bold')
+
+plt.subplot(2, 2, 1)
+plt.plot(df["KT"], df["KL"], label="KL Original", color='gray', linewidth=1)
+plt.title("Original KL Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df["KT"].max())
+
+plt.subplot(2, 2, 2)
+plt.plot(df["KT"], df["KR"], label="KR Original", color='gray', linewidth=1)
+plt.title("Original KR Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df["KT"].max())
+
+plt.subplot(2, 2, 3)
+plt.plot(df["KT"], df["KL_denoised"], label="KL Denoised", color='blue', linewidth=1)
+plt.title("Denoised KL Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df["KT"].max())
+
+plt.subplot(2, 2, 4)
+plt.plot(df["KT"], df["KR_denoised"], label="KR Denoised", color='blue', linewidth=1)
+plt.title("Denoised KR Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df["KT"].max())
+
+plt.tight_layout()
+##only uncomment below line of code if you want to save image as png
+##plt.savefig('my_plot.png', dpi=300, bbox_inches='tight') 
+plt.show()
