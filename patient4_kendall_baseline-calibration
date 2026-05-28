@@ -7,79 +7,40 @@ from scipy.signal import medfilt
 def nonlinear_filtering(data, kernel_size=1):
     return medfilt(data, kernel_size=kernel_size)
 
-def wavelet_denoise_with_baseline(signal, baseline_std, wavelet='db4', level=1):
-    coeffs = pywt.wavedec(signal, wavelet, mode="per")
-    threshold = baseline_std * np.sqrt(2 * np.log(len(signal)))
-    coeffs_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs]
-    return pywt.waverec(coeffs_thresholded, wavelet, mode="per")
-
-## differences for level 3 and level 2. 
-#level 2 is for good middle ground, removes more noise than level 1 while keeping swallowing events clear.
-#level 3 may be more suitable for healthy patients or dysphagia patients without dystonia to not risk removing pulsing muscle signals. 
-
-##LEVEL 1 SHOULD ONLY BE USED FOR THE DENOISED VERSION OF BASELINES ONLY. BECAUSE THERE IS NO SWALLOWING PEAKS.
-
-def wavelet_denoise(signal, wavelet='db4', level=3):
+def wavelet_denoise(signal, wavelet='db4', level=1):
     coeffs = pywt.wavedec(signal, wavelet, mode="per")
     sigma = np.median(np.abs(coeffs[-level])) / 0.6745
     threshold = sigma * np.sqrt(2 * np.log(len(signal)))
     coeffs_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs]
     return pywt.waverec(coeffs_thresholded, wavelet, mode="per")
 
-# ── CHANGE FILE NAMES HERE ────────────────────────────────────────
-baseline_file = "filename.csv"   # THIS IS WHERE THE BASELINE CSV FILE FOR THE KENDALLS ARE.
-swallow_file  = "filename.csv"               # THIS IS WHERE THE COMBINED SWALLOWING CSV FILE ARE - KENDALL VS ITALIANS.
+# FILE GOES HERE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# CHANGE FILE NAME PLEASE
+file_path = "Patient4-Calibration-Baseline-Kendall-5_28_26.csv"
+df = pd.read_csv(file_path)
 
-## THERE IS ONLY A RECORDED BASELINE FOR KENDALLS. REGULAR ESTIMATE OF DENOISING IS FOR ITALIANS.
-# issue is that same denoising method for healthy patients or dysphagia with no dystonia is applied to
-# italian electrodes graph. Please keep this in mind: Italian graphs may have removed more data than expected and may be incorrect.
-
-df_baseline = pd.read_csv(baseline_file)
-df = pd.read_csv(swallow_file)
-
-# duplicate KT columns — rename them
-df.columns = ["KT", "KL", "KT2", "KR", "IT", "IL", "IT2", "IR"]
-
-# ── Handle missing values ─────────────────────────────────────────
-for col in ["KL", "KR", "IL", "IR"]:
-    total   = len(df[col])
+# ── Count and handle missing values ──────────────────────────────
+for col in ["KL", "KR"]:
+    total = len(df[col])
     missing = df[col].isna().sum()
-    print(f"Swallow - Total values in {col}: {total}, Missing: {missing}")
-    if missing > 0:
-        df[col].interpolate(method="linear", inplace=True)
+    print(f"Total values in {col}: {total}, Missing: {missing}")
 
 for col in ["KL", "KR"]:
-    total   = len(df_baseline[col])
-    missing = df_baseline[col].isna().sum()
-    print(f"Baseline - Total values in {col}: {total}, Missing: {missing}")
-    if missing > 0:
-        df_baseline[col].interpolate(method="linear", inplace=True)
-
-# ── Compute noise profile from Kendall baseline ───────────────────
-baseline_std_KL = np.std(df_baseline["KL"])
-baseline_std_KR = np.std(df_baseline["KR"])
-print(f"Baseline std KL: {baseline_std_KL:.4f} µV")
-print(f"Baseline std KR: {baseline_std_KR:.4f} µV")
+    if df[col].isna().sum() > 0:
+        df[col].interpolate(method="linear", inplace=True)
 
 # ── Apply nonlinear filtering ─────────────────────────────────────
 df["KL_filtered"] = nonlinear_filtering(df["KL"], kernel_size=1)
 df["KR_filtered"] = nonlinear_filtering(df["KR"], kernel_size=1)
-df["IL_filtered"] = nonlinear_filtering(df["IL"], kernel_size=1)
-df["IR_filtered"] = nonlinear_filtering(df["IR"], kernel_size=1)
 
-# ── Apply denoising ───────────────────────────────────────────────
-# Kendall — baseline-informed
-df["KL_denoised"] = wavelet_denoise_with_baseline(df["KL_filtered"], baseline_std_KL)
-df["KR_denoised"] = wavelet_denoise_with_baseline(df["KR_filtered"], baseline_std_KR)
+# ── Apply wavelet denoising ───────────────────────────────────────
+df["KL_denoised"] = wavelet_denoise(df["KL_filtered"])
+df["KR_denoised"] = wavelet_denoise(df["KR_filtered"])
 
-# Italian — standard wavelet (no baseline available)
-df["IL_denoised"] = wavelet_denoise(df["IL_filtered"])
-df["IR_denoised"] = wavelet_denoise(df["IR_filtered"])
-
-# ── Compute shared y-axis range across ALL signals ────────────────
+# ── Compute shared y-axis range ───────────────────────────────────
 all_signals = pd.concat([
-    df["KL"], df["KR"], df["KL_denoised"], df["KR_denoised"],
-    df["IL"], df["IR"], df["IL_denoised"], df["IR_denoised"]
+    df["KL"], df["KR"],
+    df["KL_denoised"], df["KR_denoised"]
 ])
 
 tick_step = 50
@@ -89,9 +50,9 @@ y_ticks = np.arange(global_min, global_max + tick_step, tick_step)
 
 print(f"Y-axis range: {global_min} to {global_max} µV (ticks every {tick_step} µV)")
 
-# ── Plot Kendall Electrodes ───────────────────────────────────────
+# ── Plot Kendall Calibration ──────────────────────────────────────
 plt.figure(figsize=(12, 8))
-plt.suptitle("Kendall Electrodes (Baseline-Informed Denoising)", fontsize=14, fontweight='bold')
+plt.suptitle("Kendall Calibration Baseline", fontsize=14, fontweight='bold')
 
 plt.subplot(2, 2, 1)
 plt.plot(df["KT"], df["KL"], label="KL Original", color='gray', linewidth=1)
@@ -104,14 +65,14 @@ plt.yticks(y_ticks)
 plt.xlim(0, df["KT"].max())
 
 plt.subplot(2, 2, 2)
-plt.plot(df["KT2"], df["KR"], label="KR Original", color='gray', linewidth=1)
+plt.plot(df["KT"], df["KR"], label="KR Original", color='gray', linewidth=1)
 plt.title("Original KR Signal")
 plt.xlabel("Time (s)")
 plt.ylabel("Voltage (µV)")
 plt.legend()
-plt.xticks(np.arange(0, df["KT2"].max() + 1, 10), fontsize=10)
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
 plt.yticks(y_ticks)
-plt.xlim(0, df["KT2"].max())
+plt.xlim(0, df["KT"].max())
 
 plt.subplot(2, 2, 3)
 plt.plot(df["KT"], df["KL_denoised"], label="KL Denoised", color='blue', linewidth=1)
@@ -124,64 +85,16 @@ plt.yticks(y_ticks)
 plt.xlim(0, df["KT"].max())
 
 plt.subplot(2, 2, 4)
-plt.plot(df["KT2"], df["KR_denoised"], label="KR Denoised", color='blue', linewidth=1)
+plt.plot(df["KT"], df["KR_denoised"], label="KR Denoised", color='blue', linewidth=1)
 plt.title("Denoised KR Signal")
 plt.xlabel("Time (s)")
 plt.ylabel("Voltage (µV)")
 plt.legend()
-plt.xticks(np.arange(0, df["KT2"].max() + 1, 10), fontsize=10)
+plt.xticks(np.arange(0, df["KT"].max() + 1, 10), fontsize=10)
 plt.yticks(y_ticks)
-plt.xlim(0, df["KT2"].max())
+plt.xlim(0, df["KT"].max())
 
 plt.tight_layout()
-##remove comment below if you want to save image of kendall electrodes graph
-plt.savefig('Patient4_Kendalls.png', dpi=300, bbox_inches='tight')
-plt.show()
-
-# ── Plot Italian Electrodes ───────────────────────────────────────
-plt.figure(figsize=(12, 8))
-plt.suptitle("Italian Electrodes (Standard Wavelet Denoising)", fontsize=14, fontweight='bold')
-
-plt.subplot(2, 2, 1)
-plt.plot(df["IT"], df["IL"], label="IL Original", color='gray', linewidth=1)
-plt.title("Original IL Signal")
-plt.xlabel("Time (s)")
-plt.ylabel("Voltage (µV)")
-plt.legend()
-plt.xticks(np.arange(0, df["IT"].max() + 1, 10), fontsize=10)
-plt.yticks(y_ticks)
-plt.xlim(0, df["IT"].max())
-
-plt.subplot(2, 2, 2)
-plt.plot(df["IT2"], df["IR"], label="IR Original", color='gray', linewidth=1)
-plt.title("Original IR Signal")
-plt.xlabel("Time (s)")
-plt.ylabel("Voltage (µV)")
-plt.legend()
-plt.xticks(np.arange(0, df["IT2"].max() + 1, 10), fontsize=10)
-plt.yticks(y_ticks)
-plt.xlim(0, df["IT2"].max())
-
-plt.subplot(2, 2, 3)
-plt.plot(df["IT"], df["IL_denoised"], label="IL Denoised", color='red', linewidth=1)
-plt.title("Denoised IL Signal")
-plt.xlabel("Time (s)")
-plt.ylabel("Voltage (µV)")
-plt.legend()
-plt.xticks(np.arange(0, df["IT"].max() + 1, 10), fontsize=10)
-plt.yticks(y_ticks)
-plt.xlim(0, df["IT"].max())
-
-plt.subplot(2, 2, 4)
-plt.plot(df["IT2"], df["IR_denoised"], label="IR Denoised", color='red', linewidth=1)
-plt.title("Denoised IR Signal")
-plt.xlabel("Time (s)")
-plt.ylabel("Voltage (µV)")
-plt.legend()
-plt.xticks(np.arange(0, df["IT2"].max() + 1, 10), fontsize=10)
-plt.yticks(y_ticks)
-plt.xlim(0, df["IT2"].max())
-plt.tight_layout()
-##remove comment below if you want to save image of italian electrodes graph
-##plt.savefig('Patient4_Italians.png', dpi=300, bbox_inches='tight')
+##only uncomment below line of code if you want to save image as png
+##plt.savefig('my_plot.png', dpi=300, bbox_inches='tight') 
 plt.show()
