@@ -13,7 +13,7 @@ def wavelet_denoise_with_baseline(signal, baseline_std, wavelet='db4', level=1):
     coeffs_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs]
     return pywt.waverec(coeffs_thresholded, wavelet, mode="per")
 
-##differences for level 3 and level 2. 
+## differences for level 3 and level 2. 
 #level 2 is for good middle ground, removes more noise than level 1 while keeping swallowing events clear.
 #level 3 may be more suitable for healthy patients or dysphagia patients without dystonia to not risk removing pulsing muscle signals. 
 
@@ -27,8 +27,8 @@ def wavelet_denoise(signal, wavelet='db4', level=3):
     return pywt.waverec(coeffs_thresholded, wavelet, mode="per")
 
 # ── CHANGE FILE NAMES HERE ────────────────────────────────────────
-baseline_file = "PATIENT 4 KENDALL BASELINE ONLY.csv"   # THIS IS WHERE THE BASELINE CSV FILE FOR THE KENDALLS ARE.
-swallow_file  = "PATIENT 4 COMBINED SWALLOWING FILE.csv"               # THIS IS WHERE THE COMBINED SWALLOWING CSV FILE ARE - KENDALL VS ITALIANS.
+baseline_file = "filename.csv"   # THIS IS WHERE THE BASELINE CSV FILE FOR THE KENDALLS ARE.
+swallow_file  = "filename.csv"               # THIS IS WHERE THE COMBINED SWALLOWING CSV FILE ARE - KENDALL VS ITALIANS.
 
 ## THERE IS ONLY A RECORDED BASELINE FOR KENDALLS. REGULAR ESTIMATE OF DENOISING IS FOR ITALIANS.
 # issue is that same denoising method for healthy patients or dysphagia with no dystonia is applied to
@@ -134,7 +134,8 @@ plt.yticks(y_ticks)
 plt.xlim(0, df["KT2"].max())
 
 plt.tight_layout()
-plt.savefig('Kendall_Swallowing.png', dpi=300, bbox_inches='tight')
+##remove comment below if you want to save image of kendall electrodes graph
+plt.savefig('Patient4_Kendalls.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # ── Plot Italian Electrodes ───────────────────────────────────────
@@ -180,8 +181,7 @@ plt.legend()
 plt.xticks(np.arange(0, df["IT2"].max() + 1, 10), fontsize=10)
 plt.yticks(y_ticks)
 plt.xlim(0, df["IT2"].max())
-
 plt.tight_layout()
-## uncomment below line of code if you want to save graph as image.
-##plt.savefig('Italian_Swallowing.png', dpi=300, bbox_inches='tight')
+##remove comment below if you want to save image of italian electrodes graph
+##plt.savefig('Patient4_Italians.png', dpi=300, bbox_inches='tight')
 plt.show()
