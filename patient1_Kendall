@@ -1,0 +1,98 @@
+import pandas as pd
+import numpy as np
+import pywt
+import matplotlib.pyplot as plt
+from scipy.signal import medfilt
+
+def nonlinear_filtering(data, kernel_size=1):
+    return medfilt(data, kernel_size=kernel_size)
+
+def wavelet_denoise(signal, wavelet='db4', level=3):
+    coeffs = pywt.wavedec(signal, wavelet, mode="per")
+    sigma = np.median(np.abs(coeffs[-level])) / 0.6745
+    threshold = sigma * np.sqrt(2 * np.log(len(signal)))
+    coeffs_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs]
+    denoised = pywt.waverec(coeffs_thresholded, wavelet, mode="per")
+    return denoised[:len(signal)]
+
+file_path = "Patient1-Shashkin-KENDALL - Sheet1.csv"
+df = pd.read_csv(file_path, header=0)
+df.columns = ["KT", "KL", "KT_R", "KR"]
+
+df_kendall = df[(df["KT"] >= 7.5) & (df["KT"] <= 110)].copy()
+df_kendall["KT"] = df_kendall["KT"] - 7.5
+df_kendall = df_kendall.reset_index(drop=True)
+
+for col in ["KL", "KR"]:
+    total = len(df[col])
+    missing = df[col].isna().sum()
+    print(f"Total values in {col}: {total}, Missing: {missing}")
+
+for col in ["KL", "KR"]:
+    if df_kendall[col].isna().sum() > 0:
+        df_kendall[col].interpolate(method="linear", inplace=True)
+
+df_kendall["KL_filtered"] = nonlinear_filtering(df_kendall["KL"])
+df_kendall["KR_filtered"] = nonlinear_filtering(df_kendall["KR"])
+
+df_kendall["KL_denoised"] = wavelet_denoise(df_kendall["KL_filtered"])
+df_kendall["KR_denoised"] = wavelet_denoise(df_kendall["KR_filtered"])
+
+all_signals = pd.concat([
+    df_kendall["KL"], df_kendall["KR"],
+    df_kendall["KL_denoised"], df_kendall["KR_denoised"],
+])
+
+tick_step = 50
+global_min = np.floor(all_signals.min() / tick_step) * tick_step
+global_max = np.ceil(all_signals.max() / tick_step) * tick_step
+y_ticks = np.arange(global_min, global_max + tick_step, tick_step)
+
+print(f"Y-axis range: {global_min} to {global_max} µV (ticks every {tick_step} µV)")
+
+plt.figure(figsize=(12, 8))
+plt.suptitle("Kendall Electrodes", fontsize=14, fontweight='bold')
+
+plt.subplot(2, 2, 1)
+plt.plot(df_kendall["KT"], df_kendall["KL"], label="KL Original", color='gray', linewidth=1)
+plt.title("Original KL Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df_kendall["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df_kendall["KT"].max())
+
+plt.subplot(2, 2, 2)
+plt.plot(df_kendall["KT"], df_kendall["KR"], label="KR Original", color='gray', linewidth=1)
+plt.title("Original KR Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df_kendall["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df_kendall["KT"].max())
+
+plt.subplot(2, 2, 3)
+plt.plot(df_kendall["KT"], df_kendall["KL_denoised"], label="KL Denoised", color='blue', linewidth=1)
+plt.title("Denoised KL Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df_kendall["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df_kendall["KT"].max())
+
+plt.subplot(2, 2, 4)
+plt.plot(df_kendall["KT"], df_kendall["KR_denoised"], label="KR Denoised", color='blue', linewidth=1)
+plt.title("Denoised KR Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Voltage (µV)")
+plt.legend()
+plt.xticks(np.arange(0, df_kendall["KT"].max() + 1, 10), fontsize=10)
+plt.yticks(y_ticks)
+plt.xlim(0, df_kendall["KT"].max())
+
+plt.tight_layout()
+plt.savefig('Patient1_Kendalls.png', dpi=300, bbox_inches='tight')
+plt.show()
